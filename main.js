@@ -1,5 +1,7 @@
 const AVG_STEPS_PER_SEC = 1.5;
 const WALK_DURATION_MS = 10000;
+const STEP_SEPARATION_THRESHOLD = 0.08;
+const MIN_STEP_INTERVAL_MS = 300;
 let bobDots = [];
 let currentZoomData = [];
 let currentSlide = 0;
@@ -7,10 +9,23 @@ let isRecording = false;
 let journeyStage = 0;
 const totalSlides = 8;
 let journeyPlaying = false;
+let recordingMode = 'manual';
 // Global variables to hold the currently filtered data for multi-charts
 let currentFilteredBobData = [];
 let currentFilteredPerson1Data = [];
 let currentFilteredPerson2Data = [];
+// Computer vision state
+let cameraEnabled = false;
+let poseDetector = null;
+let cameraStream = null;
+let poseAnimationFrame = null;
+let cameraVideoEl = null;
+let poseCanvasEl = null;
+let poseCtx = null;
+let cameraStatusEl = null;
+let cameraToggleBtn = null;
+let footStateApart = false;
+let lastRecordedStepTime = 0;
 // Real data from CSV files - Fixed paths
 const SAMPLE_PEOPLE = [
     { id: 1, name: "Control", disease: "Healthy Control", file: "data/control.csv", color: "#28a745" },
@@ -136,6 +151,17 @@ document.addEventListener('DOMContentLoaded', function() {
     person2LegendDot = document.getElementById("person2LegendDot");
     person1LegendLabel = document.getElementById("person1LegendLabel");
     person2LegendLabel = document.getElementById("person2LegendLabel");   
+    cameraToggleBtn = document.getElementById("cameraToggleBtn");
+    cameraStatusEl = document.getElementById("cameraStatus");
+    cameraVideoEl = document.getElementById("cameraFeed");
+    poseCanvasEl = document.getElementById("poseCanvas");
+    if (poseCanvasEl) {
+        poseCtx = poseCanvasEl.getContext("2d");
+    }
+
+    if (cameraToggleBtn) {
+        cameraToggleBtn.addEventListener('click', handleCameraToggle);
+    }
 
     initializeApp();
 });
@@ -228,14 +254,14 @@ function setupEventListeners() {
         const timer2 = document.getElementById("timer2");
 
         controlReplayBtn.disabled = true;
-        controlReplayBtn.textContent = "⏳ Replaying...";
+        controlReplayBtn.textContent = "Replaying...";
 
-        if (timer2) startTimer(timer2); // 👈 start the timer
+        if (timer2) startTimer(timer2);
 
         await replayZoomSteps(currentZoomData, svgZoom, document.getElementById("controlCharacter"));
 
         controlReplayBtn.disabled = false;
-        controlReplayBtn.textContent = "▶️ Play NOT Bob's Walk";
+        controlReplayBtn.textContent = "Play Control Walk";
 
         if (timer2) timer2.style.display = 'none'; // 👈 hide after replay
     });
@@ -246,16 +272,16 @@ function setupEventListeners() {
         const timer3 = document.getElementById("timer3");
 
         diseaseReplayBtn.disabled = true;
-        diseaseReplayBtn.textContent = "⏳ Replaying...";
+        diseaseReplayBtn.textContent = "Replaying...";
 
-        if (timer3) startTimer(timer3); // 👈 start the timer
+        if (timer3) startTimer(timer3);
 
         await replayZoomSteps(currentZoomData, svgZoom, document.getElementById("diseaseCharacter"));
 
         diseaseReplayBtn.disabled = false;
-        diseaseReplayBtn.textContent = "▶️ Play Walk";
+        diseaseReplayBtn.textContent = "Play Walk";
 
-        if (timer3) timer3.style.display = 'none'; // 👈 hide after replay
+        if (timer3) timer3.style.display = 'none';
     });
     if (nextBtn1) nextBtn1.addEventListener('click', () => goToSlide(1));
     if (nextBtn2) nextBtn2.addEventListener('click', () => goToSlide(2));
@@ -348,6 +374,8 @@ function reset() {
     currentFilteredPerson2Data = [];
     startTime = null;
     isRecording = false;
+    lastRecordedStepTime = 0;
+    footStateApart = false;
     svg.selectAll("*").remove();
     bobChartSvg.selectAll("*").remove();
     statusEl.textContent = "";
@@ -357,7 +385,7 @@ function reset() {
     bobEl.style.transform = "translateX(0px)";
     if (nextBtn1) nextBtn1.disabled = true;
     startBtn.disabled = false;
-    startBtn.textContent = "🎬 Start Recording Bob";
+    startBtn.textContent = "Start Recording";
     
     // Reset and hide timers
     const timer1 = document.getElementById('timer1');
@@ -395,7 +423,7 @@ async function loadCSVData(person) {
         return data;
     } catch (error) {
         console.error(`Error loading ${person.file}:`, error);
-        statusEl.textContent = `❌ Error loading ${person.name} data. Check console for details.`;
+        statusEl.textContent = `Error loading ${person.name} data. Check console for details.`;
         return [];
     }
 }
@@ -870,12 +898,16 @@ async function drawChart(showLines = false) {
 }
 
 function startWalk() {
+    if (recordingMode === 'vision' && !cameraEnabled) {
+        statusEl.textContent = "Enable the camera tracker before recording.";
+        return;
+    }
     reset();
     isRecording = true;
     startTime = performance.now();
     startBtn.disabled = true;
-    startBtn.textContent = "⏳ Recording...";
-    statusEl.textContent = "🚶‍♂️ Make Bob walk for 10 seconds by clicking on him!";
+    startBtn.textContent = "Recording...";
+    statusEl.textContent = "Click the character to record steps for 10 seconds";
     
     // Start the timer in the appropriate slide
     const timer = currentSlide === 0 ? 
@@ -889,7 +921,7 @@ function startWalk() {
     
     setTimeout(() => {
         isRecording = false;
-        statusEl.textContent = `✅ Recording complete! Bob took ${bobSteps.length} steps.`;
+        statusEl.textContent = `Recording complete. ${bobSteps.length} steps recorded.`;
         console.log('Recording ended. Total steps:', bobSteps.length);
         console.log('Step times:', bobSteps);
         
@@ -907,15 +939,15 @@ function startWalk() {
             replayBtn.style.display = "inline-block";
             if (nextBtn1) nextBtn1.disabled = false;
             
-            startBtn.textContent = "🎬 Record again";
+            startBtn.textContent = "Record Again";
             startBtn.disabled = false;
         } else {
-            statusEl.textContent = "❌ No steps recorded! Try clicking on Bob during the recording period.";
+            statusEl.textContent = "No steps recorded. Try clicking during the recording period.";
             startBtn.disabled = false;
-            startBtn.textContent = "🎬 Start Recording Bob";
+            startBtn.textContent = "Start Recording";
         }
         // change next button text
-        document.getElementById("nextBtn1").textContent = "See Normal Walk➡️";
+        document.getElementById("nextBtn1").textContent = "Continue";
     }, WALK_DURATION_MS);
 }
 
@@ -936,7 +968,7 @@ function replaySteps() {
     if (bobSteps.length === 0) return;
     
     replayBtn.disabled = true;
-    replayBtn.textContent = "👣 Bob is replaying...";
+    replayBtn.textContent = "Replaying...";
     
     bobEl.style.transform = "translateX(0px)";
     stepRight = true;
@@ -976,7 +1008,7 @@ function replaySteps() {
     const totalTime = bobSteps[bobSteps.length - 1] || 0;
     setTimeout(() => {
         replayBtn.disabled = false;
-        replayBtn.textContent = "🔁 Replay Bob's Walk";
+        replayBtn.textContent = "Replay Walk";
     }, totalTime + 1000);
 }
 
@@ -1074,18 +1106,18 @@ function showApplication(type, event) {
     const applications = {
         'detection': {
             title: 'Early Disease Detection',
-            description: 'Gait changes can appear 3-5 years before traditional symptoms. Machine learning algorithms analyze subtle walking patterns to identify neurological conditions in their earliest stages.',
-            icon: '🔍'
+            description: 'Gait changes can appear years before traditional symptoms. Analysis of walking patterns can help identify neurological conditions in early stages.',
+            icon: ''
         },
         'monitoring': {
             title: 'Treatment Monitoring', 
-            description: 'Real-time gait data provides objective measurements of treatment effectiveness. Doctors can adjust medications based on walking pattern changes rather than subjective patient reports.',
-            icon: '📈'
+            description: 'Gait data provides objective measurements of treatment effectiveness. Doctors can adjust medications based on walking pattern changes.',
+            icon: ''
         },
         'prevention': {
             title: 'Fall Prevention',
-            description: 'Gait instability patterns predict fall risk with 85% accuracy. Preventive interventions can be implemented before accidents occur, saving lives and healthcare costs.',
-            icon: '🛡️'
+            description: 'Gait instability patterns can help predict fall risk. Preventive interventions can be implemented before accidents occur.',
+            icon: ''
         }
     };
 
@@ -1120,7 +1152,7 @@ function playJourney() {
     journeyPlaying = true;
     const playBtn = document.getElementById('playBtn');
     playBtn.disabled = true;
-    playBtn.textContent = '⏳ Playing...';
+    playBtn.textContent = 'Playing...';
     
     resetJourney();
     animateJourney();
@@ -1136,7 +1168,7 @@ function resetJourney() {
     
     const playBtn = document.getElementById('playBtn');
     playBtn.disabled = false;
-    playBtn.textContent = '▶️ Play Journey';
+    playBtn.textContent = 'Play Journey';
 }
 
 function animateJourney() {
@@ -1449,7 +1481,7 @@ async function playMultiWalk() {
     }
 
     multiPlayBtn.disabled = true;
-    multiPlayBtn.textContent = "⏳ Playing...";
+    multiPlayBtn.textContent = "Playing...";
 
     // Reset emoji positions
     document.getElementById("bobMultiEmoji").style.transform = "translateX(0px)";
@@ -1464,13 +1496,6 @@ async function playMultiWalk() {
         ...person1Zoom.map(d => ({ time: d.time, type: 'person1' })),
         ...person2Zoom.map(d => ({ time: d.time, type: 'person2' }))
     ];
-
-    if (allSteps.length === 0) {
-        multiPlayBtn.disabled = false;
-        multiPlayBtn.textContent = "▶️ Play All Walks";
-        if (timer4) timer4.style.display = 'none';
-        return;
-    }
 
     allSteps.sort((a, b) => a.time - b.time);
 
@@ -1502,7 +1527,7 @@ async function playMultiWalk() {
                 return; // Skip if element not found
             }
 
-            // Animate the emoji character
+            // Animate the character
             takeStep(charElement);
 
             // Animate the corresponding dot on the multiZoomChart
@@ -1526,7 +1551,144 @@ async function playMultiWalk() {
 
     setTimeout(() => {
         multiPlayBtn.disabled = false;
-        multiPlayBtn.textContent = "▶️ Play All Walks";
+        multiPlayBtn.textContent = "Play All Walks";
         if (timer4) timer4.style.display = "none";
-    }, maxAnimationTime + 1000); // Add a small buffer at the end
+    }, maxAnimationTime + 1000);
+}
+
+async function handleCameraToggle() {
+    if (cameraEnabled) {
+        statusEl.textContent = "Camera tracking is already active.";
+        return;
+    }
+    await enableCameraTracking();
+}
+
+async function enableCameraTracking() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (cameraStatusEl) cameraStatusEl.textContent = "Camera not supported in this browser.";
+        return;
+    }
+
+    try {
+        recordingMode = 'vision';
+        if (cameraStatusEl) cameraStatusEl.textContent = "Initializing camera...";
+        cameraToggleBtn.disabled = true;
+        await loadPoseDetector();
+        await startCameraStream();
+        startPoseLoop();
+        cameraEnabled = true;
+        if (cameraStatusEl) cameraStatusEl.textContent = "Camera ready. Press Start Recording to capture steps.";
+        cameraToggleBtn.textContent = "Camera Tracking Enabled";
+    } catch (error) {
+        console.error("Camera init error:", error);
+        recordingMode = 'manual';
+        cameraEnabled = false;
+        cameraToggleBtn.disabled = false;
+        if (cameraStatusEl) cameraStatusEl.textContent = "Unable to access camera. Check permissions.";
+    }
+}
+
+async function loadPoseDetector() {
+    if (poseDetector) return;
+    const detectorConfig = {
+        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+    };
+    poseDetector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
+}
+
+async function startCameraStream() {
+    if (cameraStream) return;
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+            width: 720,
+            height: 540
+        }
+    });
+    if (cameraVideoEl) {
+        cameraVideoEl.srcObject = cameraStream;
+        await cameraVideoEl.play();
+        adjustPoseCanvasSize();
+    }
+}
+
+function adjustPoseCanvasSize() {
+    if (!cameraVideoEl || !poseCanvasEl) return;
+    poseCanvasEl.width = cameraVideoEl.videoWidth || 720;
+    poseCanvasEl.height = cameraVideoEl.videoHeight || 540;
+}
+
+function startPoseLoop() {
+    if (poseAnimationFrame || !poseDetector || !cameraVideoEl) return;
+
+    const estimationConfig = {
+        flipHorizontal: true
+    };
+
+    const detectPose = async () => {
+        if (!poseDetector || !cameraEnabled) {
+            poseAnimationFrame = null;
+            return;
+        }
+
+        const poses = await poseDetector.estimatePoses(cameraVideoEl, estimationConfig);
+        if (poses && poses.length > 0) {
+            drawPose(poses[0]);
+            analyzePoseForSteps(poses[0]);
+        } else if (poseCtx && poseCanvasEl) {
+            poseCtx.clearRect(0, 0, poseCanvasEl.width, poseCanvasEl.height);
+        }
+
+        poseAnimationFrame = requestAnimationFrame(detectPose);
+    };
+
+    detectPose();
+}
+
+function drawPose(pose) {
+    if (!poseCtx || !poseCanvasEl) return;
+    poseCtx.clearRect(0, 0, poseCanvasEl.width, poseCanvasEl.height);
+    poseCtx.strokeStyle = "#00d2d3";
+    poseCtx.lineWidth = 4;
+    poseCtx.fillStyle = "#ff6b6b";
+
+    pose.keypoints.forEach(point => {
+        if (point.score > 0.5) {
+            const x = poseCanvasEl.width - point.x * poseCanvasEl.width;
+            const y = point.y * poseCanvasEl.height;
+            poseCtx.beginPath();
+            poseCtx.arc(x, y, 5, 0, Math.PI * 2);
+            poseCtx.fill();
+        }
+    });
+}
+
+function analyzePoseForSteps(pose) {
+    if (!isRecording || recordingMode !== 'vision') return;
+    const leftAnkle = pose.keypoints.find(k => k.name === 'left_ankle');
+    const rightAnkle = pose.keypoints.find(k => k.name === 'right_ankle');
+
+    if (!leftAnkle || !rightAnkle) return;
+    if (leftAnkle.score < 0.5 || rightAnkle.score < 0.5) return;
+
+    const separation = Math.abs(leftAnkle.x - rightAnkle.x);
+
+    if (!footStateApart && separation > STEP_SEPARATION_THRESHOLD) {
+        recordVisionStep();
+        footStateApart = true;
+    } else if (footStateApart && separation < STEP_SEPARATION_THRESHOLD * 0.6) {
+        footStateApart = false;
+    }
+}
+
+function recordVisionStep() {
+    if (!isRecording || recordingMode !== 'vision' || !startTime) return;
+    const now = performance.now();
+    const elapsed = now - startTime;
+    if (elapsed > WALK_DURATION_MS) return;
+    if (elapsed - lastRecordedStepTime < MIN_STEP_INTERVAL_MS) return;
+
+    bobSteps.push(elapsed);
+    lastRecordedStepTime = elapsed;
+    statusEl.textContent = `Step detected: ${bobSteps.length}`;
 }

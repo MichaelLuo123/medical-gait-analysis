@@ -97,6 +97,72 @@ body {
     transition: all 0.3s ease;
 }
 
+.camera-panel {
+    width: 100%;
+    max-width: 1000px;
+    margin: 20px auto 30px;
+    padding: 20px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+}
+
+.camera-panel-header h3 {
+    color: #ffffff;
+    margin-bottom: 8px;
+}
+
+.camera-panel-header p {
+    color: rgba(255,255,255,0.9);
+    margin-bottom: 15px;
+    line-height: 1.5;
+}
+
+.camera-preview {
+    position: relative;
+    width: 100%;
+    max-width: 720px;
+    aspect-ratio: 4 / 3;
+    margin: 0 auto;
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(0,0,0,0.3);
+}
+
+#cameraFeed,
+#poseCanvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 16px;
+}
+
+#cameraFeed {
+    transform: scaleX(-1);
+}
+
+#poseCanvas {
+    pointer-events: none;
+}
+
+.camera-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.camera-status {
+    color: #dfe8ff;
+    font-size: 1rem;
+}
+
 #bob:hover {
     transform: scale(1.1);
     filter: brightness(1.2);
@@ -616,7 +682,7 @@ select {
 .impact-icon {
     font-size: 3.5rem;
     margin-bottom: 15px;
-    display: block;
+    display: none;
 }
 
 .impact-title {
