@@ -5,17 +5,55 @@
 }
 
 body {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #f5f7fb;
+    color: #1f2a3b;
     min-height: 100vh;
     overflow-x: hidden;
+    line-height: 1.6;
 }
 
 .slides-container {
     position: relative;
-    /* width: 100vw; */
+
     height: 100vh;
     overflow: hidden;
+    background: #eef1f8;
+    padding: 24px 12px;
+}
+
+.progress-panel {
+    max-width: 1200px;
+    margin: 0 auto 16px auto;
+    padding: 12px 24px;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(23, 39, 74, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.progress-meta {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #3f4c63;
+}
+
+.progress-bar-track {
+    width: 100%;
+    height: 6px;
+    background: #e3e9f4;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(120deg, #2a6df4, #5596ff);
+    border-radius: inherit;
+    transition: width 0.4s ease;
 }
 
 .slide {
@@ -31,8 +69,9 @@ body {
     opacity: 0;
     transform: translateX(100%);
     transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(10px);
+    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 20px 45px rgba(23, 39, 74, 0.08);
     overflow-y: auto;
 }
 
@@ -46,41 +85,37 @@ body {
 }
 
 .slide h1 {
-    font-size: 3rem;
-    color: white;
+    font-size: 2.75rem;
+    color: #142345;
     margin-bottom: 15px;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
 }
 
 .slide h2 {
-    font-size: 2rem;
-    color: white;
+    font-size: 1.9rem;
+    color: #1f2a3b;
     margin-bottom: 20px;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
 }
 
 .slide h3 {
-    font-size: 1.5rem;
-    color: white;
+    font-size: 1.35rem;
+    color: #30415d;
     margin-bottom: 15px;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
 }
 
 .slide p {
-    font-size: 1.2rem;
-    color: rgba(255, 255, 255, 0.9);
+    font-size: 1.05rem;
+    color: #475466;
     margin-bottom: 20px;
     max-width: 800px;
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
-/* Slide 1 - Meet Bob */
 .bob-container {
     margin: 20px 0;
-    padding: 30px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    padding: 32px;
+    background: #f1f4fb;
+    border-radius: 18px;
+    border: 1px solid #dfe5f0;
 }
 
 #bob {
@@ -97,125 +132,58 @@ body {
     transition: all 0.3s ease;
 }
 
-.camera-panel {
-    width: 100%;
-    max-width: 1000px;
-    margin: 20px auto 30px;
-    padding: 20px;
-    border-radius: 20px;
-    background: rgba(255, 255, 255, 0.07);
-    border: 2px solid rgba(255, 255, 255, 0.15);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-}
-
-.camera-panel-header h3 {
-    color: #ffffff;
-    margin-bottom: 8px;
-}
-
-.camera-panel-header p {
-    color: rgba(255,255,255,0.9);
-    margin-bottom: 15px;
-    line-height: 1.5;
-}
-
-.camera-preview {
-    position: relative;
-    width: 100%;
-    max-width: 720px;
-    aspect-ratio: 4 / 3;
-    margin: 0 auto;
-    border-radius: 16px;
-    overflow: hidden;
-    background: rgba(0,0,0,0.3);
-}
-
-#cameraFeed,
-#poseCanvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 16px;
-}
-
-#cameraFeed {
-    transform: scaleX(-1);
-}
-
-#poseCanvas {
-    pointer-events: none;
-}
-
-.camera-controls {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 15px;
-    margin-top: 15px;
-}
-
-.camera-status {
-    color: #dfe8ff;
-    font-size: 1rem;
-}
-
 #bob:hover {
     transform: scale(1.1);
     filter: brightness(1.2);
 }
 
 .controls {
-    margin: 20px 0;
+    margin: 24px 0;
 }
 
 button {
-    padding: 12px 24px;
-    font-size: 1rem;
-    border: none;
-    border-radius: 25px;
+    padding: 12px 28px;
+    font-size: 0.95rem;
+    border-radius: 999px;
+    border: 1px solid transparent;
     cursor: pointer;
     margin: 0 10px;
-    transition: all 0.3s ease;
+    transition: all 0.25s ease;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.02em;
 }
 
 .primary-btn {
-    background: linear-gradient(45deg, #ff6b6b, #ee5a24);
-    color: white;
-    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+    background: linear-gradient(120deg, #2a6df4, #5596ff);
+    color: #fff;
+    box-shadow: 0 10px 20px rgba(42, 109, 244, 0.25);
 }
 
 .primary-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(255, 107, 107, 0.6);
+    box-shadow: 0 15px 22px rgba(42, 109, 244, 0.3);
 }
 
 .secondary-btn {
-    background: linear-gradient(45deg, #4834d4, #686de0);
-    color: white;
-    box-shadow: 0 4px 15px rgba(72, 52, 212, 0.4);
+    background: transparent;
+    border-color: #d0d9ea;
+    color: #1f2a3b;
+    box-shadow: none;
 }
 
 .secondary-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(72, 52, 212, 0.6);
+    background: #eef2fb;
+    border-color: #c2cde2;
 }
 
 .next-btn {
-    background: linear-gradient(45deg, #00d2d3, #54a0ff);
-    color: white;
-    box-shadow: 0 4px 15px rgba(0, 210, 211, 0.4);
+    background: #1f88ff;
+    color: #fff;
+    box-shadow: none;
 }
 
 .next-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px rgba(0, 210, 211, 0.6);
+    box-shadow: 0 8px 18px rgba(31, 136, 255, 0.35);
 }
 
 .next-btn:disabled {
@@ -225,14 +193,12 @@ button {
 }
 
 #status {
-    font-size: 1.2rem;
-    color: #ffd700;
+    font-size: 1rem;
+    color: #1f88ff;
     margin: 15px 0;
     font-weight: 600;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
 }
 
-/* Slide 2 - Control */
 .control-character {
     font-size: 6rem;
     margin: 30px 0;
@@ -244,7 +210,6 @@ button {
     50% { transform: rotate(2deg); }
 }
 
-/* Slide 3 - Comparison */
 .comparison-controls {
     margin: 20px 0;
     display: flex;
@@ -255,17 +220,17 @@ button {
 
 .comparison-controls label {
     font-size: 1.2rem;
-    color: white;
+    color: #1f2a3b;
     font-weight: 600;
 }
 
 select {
     padding: 10px 16px;
     font-size: 1rem;
-    border: none;
-    border-radius: 15px;
-    background: rgba(255, 255, 255, 0.9);
-    color: #333;
+    border: 1px solid #dfe5f0;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #1f2a3b;
     min-width: 300px;
     cursor: pointer;
 }
@@ -283,21 +248,21 @@ select {
 }
 
 .legend {
-  display: flex;
+    display: flex;
     gap: 30px;
     margin: 15px 0;
-    padding: 15px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 16px 24px;
+    background: #f7f9fc;
+    border-radius: 16px;
+    border: 1px solid #e1e6ef;
 }
 
 .legend-item {
     display: flex;
     align-items: center;
     gap: 10px;
-  font-size: 1rem;
-    color: white;
+    font-size: 0.95rem;
+    color: #3f4c63;
     font-weight: 600;
 }
 
@@ -305,15 +270,65 @@ select {
     width: 18px;
     height: 18px;
     border-radius: 50%;
-    border: 2px solid white;
+    border: 2px solid #ffffff;
+}
+
+.insight-card {
+    margin: 20px 0;
+    padding: 20px 24px;
+    border-radius: 18px;
+    border: 1px solid #e1e6ef;
+    background: #fff;
+    box-shadow: 0 12px 26px rgba(23, 39, 74, 0.08);
+    max-width: 900px;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    text-align: left;
+}
+
+.insight-card-header {
+    grid-column: 1 / -1;
+}
+
+.insight-card-header h4 {
+    margin: 0;
+    color: #142345;
+    font-size: 1.2rem;
+}
+
+.insight-card-header span {
+    font-size: 0.9rem;
+    color: #6b768c;
+}
+
+.insight-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.metric-label {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #7b889d;
+}
+
+.metric-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: #1f2a3b;
 }
 
 .chart-container {
     margin-top: 15px;
-    background: rgba(255, 255, 255, 0.95);
+    background: #ffffff;
     border-radius: 15px;
     padding: 15px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    border: 1px solid #edf0f6;
+    box-shadow: 0 15px 35px rgba(15, 34, 58, 0.08);
     max-width: 100%;
 }
 
@@ -335,13 +350,13 @@ select {
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.3);
+    background: #d7deec;
     transition: all 0.3s ease;
-  cursor: pointer;
+    cursor: pointer;
 }
 
 .dot.active {
-    background: white;
+    background: #1f88ff;
     transform: scale(1.2);
 }
 
@@ -349,29 +364,29 @@ select {
     .slide {
         padding: 15px;
     }
-    
+
     .slide h1 { font-size: 2rem; }
     .slide h2 { font-size: 1.5rem; }
     .slide h3 { font-size: 1.2rem; }
     .slide p { font-size: 1rem; }
     #bob, .control-character { font-size: 4rem; }
     button { font-size: 0.9rem; padding: 10px 20px; }
-    
+
     .chart-container {
         max-width: 95%;
         padding: 10px;
     }
-    
+
     .legend {
         flex-direction: column;
         gap: 10px;
         align-items: center;
     }
-    
+
     .comparison-controls {
         gap: 10px;
     }
-    
+
     select {
         min-width: 250px;
     }
@@ -381,8 +396,8 @@ select {
     display: flex;
     gap: 1.5rem;
     padding: 1.5rem;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 15px;
+    background: #ffffff;
+    border-radius: 20px;
     margin: 0.5rem auto;
     max-width: 1400px;
     min-height: 550px;
@@ -428,8 +443,8 @@ select {
 .playground-right .comparison-controls {
     margin: 0;
     padding: 0.75rem;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 10px;
+    background: #f5f7fb;
+    border-radius: 12px;
 }
 
 .playground-right .chart-container {
@@ -545,9 +560,9 @@ select {
     transition: transform 0.3s ease;
 }
 
-/* ... existing CSS ... */
 
-/* New styles for multi-person comparison on slide 4 */
+
+
 .compare-multi-container {
     display: flex;
     flex-direction: column;
@@ -557,24 +572,24 @@ select {
 
 .emoji-row-multi {
     display: flex;
-    gap: 50px; /* Reduced gap for three emojis */
+    gap: 50px;
     justify-content: center;
     margin-bottom: 10px;
 }
 
 #bobMultiEmoji, #person1MultiEmoji, #person2MultiEmoji {
-    font-size: 5rem; /* Slightly smaller for three */
+    font-size: 5rem;
     transition: transform 0.3s ease;
 }
 
 .multi-comparison-controls {
     display: flex;
-    flex-direction: row; /* Arrange dropdowns in a row */
+    flex-direction: row;
     gap: 30px;
     margin: 20px 0;
     align-items: center;
     justify-content: center;
-    flex-wrap: wrap; /* Allow wrapping on small screens */
+    flex-wrap: wrap;
 }
 
 .dropdown-group {
@@ -586,74 +601,138 @@ select {
 
 .chart-group-long {
     display: flex;
-    flex-direction: row; /* Two long charts side-by-side */
+    flex-direction: row;
     gap: 20px;
     width: 100%;
     justify-content: center;
-    flex-wrap: wrap; /* Allow wrapping on small screens */
+    flex-wrap: wrap;
 }
 
 .chart-group-long .chart-container {
-    flex: 1; /* Distribute space evenly */
-    min-width: 400px; /* Minimum width for each chart */
+    flex: 1;
+    min-width: 400px;
 }
 
-/* Ensure svgs inside chart-container adjust */
 .chart-container svg {
     width: 100%;
-    height: auto; /* Maintain aspect ratio */
+    height: auto;
 }
 
-/* Specific fixed sizes for the multi-charts */
 #multiChart1, #multiChart2 {
-    width: 800px;  /* Set fixed width */
-    height: 200px; /* Set fixed height */
-    overflow: visible; /* Ensure content like brush is not clipped */
+    width: 800px;
+    height: 200px;
+    overflow: visible;
 }
 
-/* Adjustments for responsiveness */
 @media (max-width: 1024px) {
     .multi-comparison-controls {
         flex-direction: column;
         gap: 15px;
     }
     .chart-group-long {
-        flex-direction: column; /* Stack long charts vertically on smaller screens */
+        flex-direction: column;
     }
     .chart-group-long .chart-container {
-        min-width: unset; /* Remove min-width when stacked */
+        min-width: unset;
     }
     #multiChart1, #multiChart2 {
-        width: 100%; /* Make them responsive on smaller screens */
-        height: 200px; /* Keep height fixed, or adjust as needed */
+        width: 100%;
+        height: 200px;
     }
 }
+
+.scenario-presets {
+    width: 100%;
+    max-width: 900px;
+    margin: 10px auto 30px auto;
+    padding: 20px 24px;
+    background: #f8fafc;
+    border: 1px solid #e4e9f4;
+    border-radius: 18px;
+    box-shadow: 0 10px 28px rgba(14, 32, 56, 0.05);
+    text-align: left;
+}
+
+.scenario-presets-header h4 {
+    margin: 0;
+    color: #142345;
+    font-size: 1.2rem;
+}
+
+.scenario-presets-header p {
+    margin: 6px 0 16px 0;
+    color: #4b5872;
+    font-size: 0.95rem;
+}
+
+.scenario-chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.scenario-chip {
+    border-radius: 999px;
+    border: 1px solid #dbe3f1;
+    background: #fff;
+    padding: 10px 20px;
+    font-size: 0.9rem;
+    color: #1f2a3b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.scenario-chip:hover {
+    background: #eef2fb;
+    border-color: #c8d4ec;
+}
+
+.scenario-chip.active {
+    background: linear-gradient(120deg, #2a6df4, #5596ff);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 8px 18px rgba(42, 109, 244, 0.25);
+}
+
+.scenario-description {
+    margin-top: 15px;
+    font-size: 0.95rem;
+    color: #4b5872;
+}
 .dataset-intro {
-    background: rgba(255, 255, 255, 0.07);
+    background: #f8fafc;
     border-radius: 20px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    padding: 25px 30px;
+    border: 1px solid #e1e6ef;
+    padding: 28px 32px;
     margin: 20px auto;
     max-width: 1000px;
     text-align: left;
-    color: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
-    backdrop-filter: blur(12px);
+    color: #3a475e;
+    box-shadow: 0 12px 30px rgba(14, 32, 56, 0.08);
     animation: fadeIn 0.5s ease-in-out;
 }
 
 .dataset-intro h2 {
     font-size: 2rem;
-    margin-bottom: 15px;
-    color: white;
-    text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+    margin-bottom: 12px;
+    color: #142345;
 }
 
 .dataset-intro p {
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     line-height: 1.7;
-    color: rgba(255, 255, 255, 0.9);
+    color: #4b5872;
     margin-bottom: 10px;
+}
+
+.dataset-intro ul {
+    margin-left: 20px;
+    color: #4b5872;
+    padding-left: 18px;
+}
+
+.dataset-intro li {
+    margin-bottom: 6px;
 }
 .impact-grid {
     display: grid;
@@ -664,19 +743,18 @@ select {
 }
 
 .impact-card {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 15px;
-    padding: 25px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(10px);
-    transition: all 0.3s ease;
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 24px;
+    border: 1px solid #ecf0f8;
+    box-shadow: 0 10px 30px rgba(23, 39, 74, 0.08);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
     cursor: pointer;
 }
 
 .impact-card:hover {
-    transform: translateY(-5px);
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateY(-6px);
+    box-shadow: 0 18px 35px rgba(23, 39, 74, 0.12);
 }
 
 .impact-icon {
@@ -689,22 +767,23 @@ select {
     font-size: 1.4rem;
     font-weight: 700;
     margin-bottom: 10px;
-    color: white;
+    color: #1f2a3b;
 }
 
 .impact-description {
-    color: rgba(255, 255, 255, 0.9);
+    color: #4b5872;
     line-height: 1.6;
     font-size: 1rem;
 }
 
 .patient-journey {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    padding: 30px;
+    background: #ffffff;
+    border-radius: 22px;
+    padding: 32px;
     margin: 20px 0;
     max-width: 1000px;
-    border: 2px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid #e4e9f4;
+    box-shadow: 0 15px 40px rgba(23, 39, 74, 0.08);
 }
 
 .timeline {
@@ -729,7 +808,7 @@ select {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+    background: linear-gradient(135deg, #1f88ff, #52a0ff);
     color: white;
     display: flex;
     align-items: center;
@@ -740,17 +819,17 @@ select {
 }
 
 .timeline-content {
-    color: white;
+    color: #1f2a3b;
 }
 
 .timeline-stage {
     font-weight: 700;
-    font-size: 1.1rem;
+    font-size: 1.05rem;
     margin-bottom: 5px;
 }
 
 .timeline-description {
-    color: rgba(255, 255, 255, 0.8);
+    color: #505f79;
     line-height: 1.5;
 }
 
@@ -796,13 +875,13 @@ select {
     .slide {
         padding: 15px;
     }
-    
+
     .slide h1 { font-size: 2rem; }
     .slide h2 { font-size: 1.5rem; }
     .slide h3 { font-size: 1.2rem; }
     .slide p { font-size: 1rem; }
     button { font-size: 0.9rem; padding: 10px 20px; }
-    
+
     .impact-grid {
         grid-template-columns: 1fr;
         gap: 20px;

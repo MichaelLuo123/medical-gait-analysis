@@ -1,7 +1,5 @@
 const AVG_STEPS_PER_SEC = 1.5;
 const WALK_DURATION_MS = 10000;
-const STEP_SEPARATION_THRESHOLD = 0.08;
-const MIN_STEP_INTERVAL_MS = 300;
 let bobDots = [];
 let currentZoomData = [];
 let currentSlide = 0;
@@ -9,24 +7,38 @@ let isRecording = false;
 let journeyStage = 0;
 const totalSlides = 8;
 let journeyPlaying = false;
-let recordingMode = 'manual';
-// Global variables to hold the currently filtered data for multi-charts
+let controlStats = null;
+const SCENARIO_PRESETS = {
+    controlAges: {
+        label: "Young vs Senior Control",
+        description: "Contrasts stride consistency between 20-year-old and 69-year-old healthy participants.",
+        person1: 1,
+        person2: 3
+    },
+    alsStages: {
+        label: "ALS Early vs Late",
+        description: "Shows how stride timing deteriorates as ALS progresses from early to late stages.",
+        person1: 4,
+        person2: 6
+    },
+    parkinsonStages: {
+        label: "Parkinson’s Early vs Late",
+        description: "Highlights cadence changes between early and late Parkinson’s disease.",
+        person1: 10,
+        person2: 12
+    },
+    controlVsAls: {
+        label: "Control vs ALS (Medium)",
+        description: "Compares a healthy gait pattern with ALS medium-stage data for contrast.",
+        person1: 1,
+        person2: 5
+    }
+};
+
 let currentFilteredBobData = [];
 let currentFilteredPerson1Data = [];
 let currentFilteredPerson2Data = [];
-// Computer vision state
-let cameraEnabled = false;
-let poseDetector = null;
-let cameraStream = null;
-let poseAnimationFrame = null;
-let cameraVideoEl = null;
-let poseCanvasEl = null;
-let poseCtx = null;
-let cameraStatusEl = null;
-let cameraToggleBtn = null;
-let footStateApart = false;
-let lastRecordedStepTime = 0;
-// Real data from CSV files - Fixed paths
+
 const SAMPLE_PEOPLE = [
     { id: 1, name: "Control", disease: "Healthy Control", file: "data/control.csv", color: "#28a745" },
     { id: 2, name: "ALS", disease: "ALS", file: "data/als.csv", color: "#dc3545" },
@@ -35,22 +47,22 @@ const SAMPLE_PEOPLE = [
 ];
 
 const EXPLORE_PEOPLE = [
-    // Control Group - based on age
+
     { id: 1, name: "Control (20 yrs)", file: "data/control_20.csv" },
     { id: 2, name: "Control (40 yrs)", file: "data/control_40.csv" },
     { id: 3, name: "Control (69 yrs)", file: "data/control_69.csv" },
 
-    // ALS Group - based on disease stage
+
     { id: 4, name: "ALS (Early)", file: "data/als_early.csv" },
     { id: 5, name: "ALS (Medium)", file: "data/als_medium.csv" },
     { id: 6, name: "ALS (Late)", file: "data/als_late.csv" },
 
-    // Huntington's Group - based on disease stage
+
     { id: 7, name: "Huntington's (Early)", file: "data/hunt_early.csv" },
     { id: 8, name: "Huntington's (Medium)", file: "data/hunt_medium.csv" },
     { id: 9, name: "Huntington's (Late)", file: "data/hunt_late.csv" },
 
-    // Parkinson's Group - based on disease stage
+
     { id: 10, name: "Parkinson's (Early)", file: "data/park_early.csv" },
     { id: 11, name: "Parkinson's (Medium)", file: "data/park_medium.csv" },
     { id: 12, name: "Parkinson's (Late)", file: "data/park_late.csv" }
@@ -76,13 +88,18 @@ const DISEASE_DESCRIPTIONS = {
     }
 };
 
-// DOM elements
-let bobEl, startBtn, statusEl, svg, svg1, bobChartSvg, personSelect, replayBtn, legend, comparisonLabel, showLinesCheckbox;
-let nextBtn1, nextBtn2, nextBtn3, nextBtn4, nextBtn5, nextBtn6, nextBtn7;
-let personSelectMulti1, personSelectMulti2; // Added these for the new dropdowns
-let person1MultiEmoji, person2MultiEmoji, multiPlayBtn, multiLegend, person1LegendDot, person2LegendDot, person1LegendLabel, person2LegendLabel; // Added multi-chart specific elements
 
-// Store the last recorded pattern
+let bobEl, startBtn, statusEl, svg, svg1, bobChartSvg, personSelect, replayBtn, legend, comparisonLabel, showLinesCheckbox;
+let nextBtn1;
+let nextButtons = [];
+let slidesList = [];
+let personSelectMulti1, personSelectMulti2;
+let person1MultiEmoji, person2MultiEmoji, multiPlayBtn, multiLegend, person1LegendDot, person2LegendDot, person1LegendLabel, person2LegendLabel;
+let slideProgressFill, slideProgressLabel;
+let scenarioChips = [];
+let scenarioDescriptionEl = null;
+
+
 let lastBobPattern = null;
 
 let timerInterval = null;
@@ -95,24 +112,24 @@ function updateTimer(timerElement, remainingTime) {
 function startTimer(timerElement) {
     const startTime = Date.now();
     const duration = WALK_DURATION_MS;
-    
-    // Show and initialize the timer
+
+
     timerElement.style.display = 'block';
     updateTimer(timerElement, duration);
-    
-    // Clear any existing interval
+
+
     if (timerInterval) {
         clearInterval(timerInterval);
     }
-    
-    // Update timer every 100ms
+
+
     timerInterval = setInterval(() => {
         const elapsed = Date.now() - startTime;
         const remaining = Math.max(0, duration - elapsed);
-        
+
         updateTimer(timerElement, remaining);
-        
-        // Stop the timer when time is up
+
+
         if (remaining <= 0) {
             clearInterval(timerInterval);
             timerElement.style.display = 'none';
@@ -120,7 +137,7 @@ function startTimer(timerElement) {
     }, 100);
 }
 
-// Initialize DOM elements after page loads
+
 document.addEventListener('DOMContentLoaded', function() {
     bobEl = document.getElementById("bob");
     startBtn = document.getElementById("startBtn");
@@ -134,15 +151,13 @@ document.addEventListener('DOMContentLoaded', function() {
     legend = document.getElementById("legend");
     comparisonLabel = document.getElementById("comparisonLabel");
     showLinesCheckbox = document.getElementById("showLines");
+    slidesList = Array.from(document.querySelectorAll(".slide"));
+    nextButtons = slidesList
+        .map(slide => slide.querySelector(".next-btn"))
+        .filter(btn => btn);
     nextBtn1 = document.getElementById("nextBtn1");
-    nextBtn2 = document.getElementById("nextBtn2");
-    nextBtn3 = document.getElementById("nextBtn3");   
-    nextBtn4 = document.getElementById("nextBtn4");    
-    nextBtn5 = document.getElementById("nextBtn5");   
-    nextBtn6 = document.getElementById("nextBtn6");   
-    nextBtn7 = document.getElementById("nextBtn7");
-    personSelectMulti1 = document.getElementById("personSelectMulti1"); // Get multi-select dropdown 1
-    personSelectMulti2 = document.getElementById("personSelectMulti2"); // Get multi-select dropdown 2
+    personSelectMulti1 = document.getElementById("personSelectMulti1");
+    personSelectMulti2 = document.getElementById("personSelectMulti2");
     person1MultiEmoji = document.getElementById("person1MultiEmoji");
     person2MultiEmoji = document.getElementById("person2MultiEmoji");
     multiPlayBtn = document.getElementById("multiPlayBtn");
@@ -150,24 +165,18 @@ document.addEventListener('DOMContentLoaded', function() {
     person1LegendDot = document.getElementById("person1LegendDot");
     person2LegendDot = document.getElementById("person2LegendDot");
     person1LegendLabel = document.getElementById("person1LegendLabel");
-    person2LegendLabel = document.getElementById("person2LegendLabel");   
-    cameraToggleBtn = document.getElementById("cameraToggleBtn");
-    cameraStatusEl = document.getElementById("cameraStatus");
-    cameraVideoEl = document.getElementById("cameraFeed");
-    poseCanvasEl = document.getElementById("poseCanvas");
-    if (poseCanvasEl) {
-        poseCtx = poseCanvasEl.getContext("2d");
-    }
-
-    if (cameraToggleBtn) {
-        cameraToggleBtn.addEventListener('click', handleCameraToggle);
-    }
+    person2LegendLabel = document.getElementById("person2LegendLabel");
+    slideProgressFill = document.getElementById("slideProgressFill");
+    slideProgressLabel = document.getElementById("slideProgressLabel");
+    scenarioChips = Array.from(document.querySelectorAll(".scenario-chip"));
+    scenarioDescriptionEl = document.getElementById("scenarioDescription");
 
     initializeApp();
+    updateSlideProgress();
 });
 
 function initializeApp() {
-    // Populate dropdown
+
     SAMPLE_PEOPLE.forEach(p => {
         const option = document.createElement("option");
         option.value = p.id;
@@ -175,19 +184,19 @@ function initializeApp() {
         personSelect.appendChild(option);
     });
 
-    // Populate personSelectMulti1 with EXPLORE_PEOPLE
+
     EXPLORE_PEOPLE.forEach(p => {
         const option = document.createElement("option");
         option.value = p.id;
-        option.textContent = p.name; // Use p.name as per EXPLORE_PEOPLE structure
+        option.textContent = p.name;
         personSelectMulti1.appendChild(option);
     });
 
-    // Populate personSelectMulti2 with EXPLORE_PEOPLE
+
     EXPLORE_PEOPLE.forEach(p => {
         const option = document.createElement("option");
         option.value = p.id;
-        option.textContent = p.name; // Use p.name as per EXPLORE_PEOPLE structure
+        option.textContent = p.name;
         personSelectMulti2.appendChild(option);
     });
 
@@ -229,12 +238,12 @@ function hideDiseaseDescription(isPlayground = false) {
 }
 
 function setupEventListeners() {
-    // Bob click handler
+
     bobEl.addEventListener("click", (e) => {
         e.preventDefault();
         takeStep(bobEl);
-        
-        // Only record steps if we're actively recording
+
+
         if (isRecording && startTime) {
             const now = performance.now();
             const elapsed = now - startTime;
@@ -245,7 +254,17 @@ function setupEventListeners() {
         }
     });
 
-    startBtn.addEventListener("click", startWalk);
+    if (startBtn) {
+        startBtn.addEventListener("click", startWalk);
+    }
+    if (scenarioChips.length > 0) {
+        scenarioChips.forEach(chip => {
+            chip.addEventListener("click", () => {
+                const key = chip.dataset.preset;
+                applyScenarioPreset(key, chip);
+            });
+        });
+    }
     replayBtn.addEventListener("click", replaySteps);
     controlReplayBtn.addEventListener("click", async () => {
         console.log("Control replay clicked");
@@ -263,7 +282,7 @@ function setupEventListeners() {
         controlReplayBtn.disabled = false;
         controlReplayBtn.textContent = "Play Control Walk";
 
-        if (timer2) timer2.style.display = 'none'; // 👈 hide after replay
+        if (timer2) timer2.style.display = 'none';
     });
     diseaseReplayBtn.addEventListener("click", async () => {
         console.log("Control replay clicked");
@@ -283,45 +302,54 @@ function setupEventListeners() {
 
         if (timer3) timer3.style.display = 'none';
     });
-    if (nextBtn1) nextBtn1.addEventListener('click', () => goToSlide(1));
-    if (nextBtn2) nextBtn2.addEventListener('click', () => goToSlide(2));
-    if (nextBtn3) nextBtn3.addEventListener('click', () => goToSlide(3));
-    if (nextBtn4) nextBtn4.addEventListener('click', () => goToSlide(4));
-    if (nextBtn5) nextBtn5.addEventListener('click', () => goToSlide(5));
-    if (nextBtn6) nextBtn6.addEventListener('click', () => goToSlide(6));
-    if (nextBtn7) nextBtn7.addEventListener('click', () => goToSlide(7));
+    if (nextButtons.length > 0 && slidesList.length > 0) {
+        nextButtons.forEach(btn => {
+            const parentSlide = btn.closest('.slide');
+            const parentIndex = slidesList.indexOf(parentSlide);
+            btn.addEventListener('click', () => {
+                const targetIndex = Math.min(parentIndex + 1, slidesList.length - 1);
+                if (targetIndex !== parentIndex) {
+                    goToSlide(targetIndex);
+                }
+            });
+        });
+    }
 
     personSelect.addEventListener("change", async () => {
         const selectedId = personSelect.value;
         if (selectedId) {
             currentComparison = SAMPLE_PEOPLE.find(p => p.id == selectedId);
             console.log('Selected comparison:', currentComparison);
-            showDiseaseDescription(currentComparison.name); // Add this line
+            showDiseaseDescription(currentComparison.name);
         } else {
             currentComparison = null;
             legend.style.display = "none";
-            hideDiseaseDescription(); // Add this line
+            hideDiseaseDescription();
+            updateInsightCard(controlStats, null, SAMPLE_PEOPLE[0].name);
+            return;
         }
         console.log('Person select changed:', selectedId);
-        const selectPerson = SAMPLE_PEOPLE[selectedId - 1]; // First person is control
+        const selectPerson = SAMPLE_PEOPLE[selectedId - 1];
         console.log('Selected person:', selectPerson);
         const selectIntervals = await loadCSVData(selectPerson);
-        // Pass controlIntervals as the data and controlPerson for color/details
+        const stats = computeGaitStats(selectIntervals);
+        updateInsightCard(stats, controlStats, selectPerson.name);
+
         drawLongChart(selectIntervals, selectPerson, d3.select('#chart2'), d3.select('#zoomChart2'));
         drawZoomChart(selectIntervals, selectPerson, d3.select('#zoomChart2'), 0);
     });
 
-    // Add change event listeners for multi-select dropdowns
+
     personSelectMulti1.addEventListener("change", updateMultiCharts);
     personSelectMulti2.addEventListener("change", updateMultiCharts);
     multiPlayBtn.addEventListener("click", playMultiWalk);
-    
-    // Slide indicators
+
+
     document.querySelectorAll('.dot').forEach((dot, index) => {
         dot.addEventListener('click', () => goToSlide(index));
     });
 
-    // Navigation buttons
+
     document.querySelectorAll('.prev-btn').forEach((btn, index) => {
         btn.addEventListener('click', () => {
             if (currentSlide > 0) {
@@ -333,22 +361,22 @@ function setupEventListeners() {
 
 function showSlide(n) {
     const slides = document.querySelectorAll('.slide');
-    
-    // Remove active class from all slides
+
+
     slides.forEach(slide => {
         slide.classList.remove('active', 'prev');
     });
-    
-    // Add appropriate classes
+
+
     if (n < slides.length) {
         slides[n].classList.add('active');
-        
-        // Add prev class to previous slides
+
+
         for (let i = 0; i < n; i++) {
             slides[i].classList.add('prev');
         }
     }
-    
+
     updateSlideIndicators();
 }
 
@@ -357,15 +385,29 @@ function updateSlideIndicators() {
     dots.forEach((dot, index) => {
         dot.classList.toggle('active', index === currentSlide);
     });
+    updateSlideProgress();
 }
 
 function goToSlide(n) {
-    currentSlide = n;
+    const slidesCount = slidesList.length > 0 ? slidesList.length : totalSlides;
+    const numericTarget = Number.isFinite(Number(n)) ? Number(n) : currentSlide;
+    const target = Math.max(0, Math.min(slidesCount - 1, numericTarget));
+    currentSlide = target;
     showSlide(currentSlide);
 }
 
+function updateSlideProgress() {
+    if (slideProgressFill) {
+        const percentage = totalSlides > 1 ? (currentSlide / (totalSlides - 1)) * 100 : 0;
+        slideProgressFill.style.width = `${percentage}%`;
+    }
+    if (slideProgressLabel) {
+        slideProgressLabel.textContent = `Slide ${currentSlide + 1} of ${totalSlides}`;
+    }
+}
+
 let bobSteps = [], startTime = null, intervalId = null;
-let loadedData = {}; // Cache for loaded CSV data
+let loadedData = {};
 
 function reset() {
     bobSteps = [];
@@ -374,20 +416,22 @@ function reset() {
     currentFilteredPerson2Data = [];
     startTime = null;
     isRecording = false;
-    lastRecordedStepTime = 0;
     footStateApart = false;
+    smoothedSeparationRatio = null;
     svg.selectAll("*").remove();
     bobChartSvg.selectAll("*").remove();
     statusEl.textContent = "";
     replayBtn.style.display = "none";
-    // legend.style.display = "none";
+
     document.getElementById("bobChart").style.display = "none";
     bobEl.style.transform = "translateX(0px)";
     if (nextBtn1) nextBtn1.disabled = true;
-    startBtn.disabled = false;
-    startBtn.textContent = "Start Recording";
-    
-    // Reset and hide timers
+    if (startBtn) {
+        startBtn.disabled = false;
+        startBtn.textContent = "Start Recording";
+    }
+
+
     const timer1 = document.getElementById('timer1');
     const timer4 = document.getElementById('timer4');
     if (timer1) timer1.style.display = 'none';
@@ -396,7 +440,7 @@ function reset() {
         clearInterval(timerInterval);
         timerInterval = null;
     }
-    // Reset multi-selects and charts on slide 4
+
     if (personSelectMulti1) personSelectMulti1.value = "";
     if (personSelectMulti2) personSelectMulti2.value = "";
     d3.select("#multiChart1").selectAll("*").remove();
@@ -406,12 +450,12 @@ function reset() {
     multiPlayBtn.disabled = true;
 }
 
-// Load CSV data with better error handling
+
 async function loadCSVData(person) {
     if (loadedData[person.file]) {
         return loadedData[person.file];
     }
-    
+
     try {
         console.log(`Loading data from: ${person.file}`);
         const data = await d3.csv(person.file, d => ({
@@ -428,46 +472,119 @@ async function loadCSVData(person) {
     }
 }
 
-// Fixed function to process Bob's steps - now calculates actual stride intervals
+function computeGaitStats(data) {
+    if (!data || data.length === 0) return null;
+    const intervals = data
+        .map(d => d.interval)
+        .filter(value => Number.isFinite(value) && value > 0);
+    if (intervals.length === 0) return null;
+
+    const sum = intervals.reduce((acc, val) => acc + val, 0);
+    const mean = sum / intervals.length;
+    const variance = intervals.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / intervals.length;
+    const std = Math.sqrt(variance);
+    const cadence = mean ? 60 / mean : null;
+    const variability = mean ? std / mean : null;
+    const min = Math.min(...intervals);
+    const max = Math.max(...intervals);
+
+    return {
+        mean,
+        std,
+        cadence,
+        variability,
+        min,
+        max,
+        sampleSize: intervals.length
+    };
+}
+
+function formatStat(value, suffix = '') {
+    if (value == null || Number.isNaN(value)) return '--';
+    return `${value}${suffix}`;
+}
+
+function updateInsightCard(stats, baseline, label) {
+    const card = document.getElementById('insightCard');
+    if (!card) return;
+    if (!stats) {
+        card.style.display = 'none';
+        return;
+    }
+
+    const avgEl = document.getElementById('insightAvg');
+    const cadenceEl = document.getElementById('insightCadence');
+    const variabilityEl = document.getElementById('insightVariability');
+    const deltaGroup = document.getElementById('insightDeltaGroup');
+    const deltaEl = document.getElementById('insightDelta');
+    const titleEl = document.getElementById('insightTitle');
+    const subtitleEl = document.getElementById('insightSubtitle');
+
+    card.style.display = 'grid';
+    if (titleEl) titleEl.textContent = label ? `${label} Snapshot` : 'Gait Snapshot';
+    if (subtitleEl) subtitleEl.textContent = stats.sampleSize ? `Based on ${stats.sampleSize} strides` : 'Live metrics';
+
+    if (avgEl) avgEl.textContent = stats.mean ? `${stats.mean.toFixed(2)} s` : '--';
+    if (cadenceEl) cadenceEl.textContent = stats.cadence ? `${stats.cadence.toFixed(1)} bpm` : '--';
+    if (variabilityEl) variabilityEl.textContent = stats.variability ? `${(stats.variability * 100).toFixed(1)} %` : '--';
+
+    if (deltaGroup && deltaEl) {
+        if (baseline && stats !== baseline) {
+            const cadenceDelta = (stats.cadence ?? 0) - (baseline.cadence ?? 0);
+            const variabilityDelta = (stats.variability ?? 0) - (baseline.variability ?? 0);
+            const cadenceText = Number.isFinite(cadenceDelta) ? `${cadenceDelta >= 0 ? '+' : ''}${cadenceDelta.toFixed(1)} bpm cadence` : '';
+            const variabilityText = Number.isFinite(variabilityDelta) ? `${variabilityDelta >= 0 ? '+' : ''}${(variabilityDelta * 100).toFixed(1)}% variability` : '';
+            const combined = [cadenceText, variabilityText].filter(Boolean).join(' | ');
+            deltaEl.textContent = combined || '--';
+            deltaGroup.style.display = combined ? 'flex' : 'none';
+        } else {
+            deltaGroup.style.display = 'none';
+        }
+    }
+}
+
+
 function processStepsToData(steps) {
     if (steps.length < 2) {
-        // If we have less than 2 steps, we can't calculate intervals
+
         return [];
     }
-    
+
     const stepData = [];
-    
-    // Calculate stride intervals as the difference between consecutive steps
+
+
     for (let i = 1; i < steps.length; i++) {
-        const currentStepTime = steps[i] / 1000; // Convert to seconds
-        const previousStepTime = steps[i - 1] / 1000; // Convert to seconds
-        const strideInterval = currentStepTime - previousStepTime; // Time between steps
-        
-        // Use the current step time as the x-coordinate and stride interval as y-coordinate
-        stepData.push({ 
-            time: currentStepTime, 
-            interval: strideInterval, 
-            type: 'stride' 
+        const currentStepTime = steps[i] / 1000;
+        const previousStepTime = steps[i - 1] / 1000;
+        const strideInterval = currentStepTime - previousStepTime;
+
+
+        stepData.push({
+            time: currentStepTime,
+            interval: strideInterval,
+            type: 'stride'
         });
     }
-    
+
     console.log('Processed Bob stride intervals:', stepData);
     return stepData;
 }
 
 async function showControlPattern() {
-    const controlPerson = SAMPLE_PEOPLE[0]; // First person is control
+    const controlPerson = SAMPLE_PEOPLE[0];
     console.log('Showing control pattern for:', controlPerson);
     const controlIntervals = await loadCSVData(controlPerson);
+    controlStats = computeGaitStats(controlIntervals);
+    updateInsightCard(controlStats, null, controlPerson.name);
     const controlChart = document.getElementById('controlChart');
     controlChart.style.display = 'block';
     if (nextBtn2) nextBtn2.style.display = 'inline-block';
-    // Pass controlIntervals as the data and controlPerson for color/details
+
     drawLongChart(controlIntervals, controlPerson, svg1, d3.select('#zoomChart1'));
     drawZoomChart(controlIntervals, controlPerson, d3.select('#zoomChart1'), 0);
 }
 
-function drawLongChart(data, person, svg, zoomSvg, includeBrush = true, customBrushCallback = null) { // Removed 'bobData' and 'diseaseData', now accepts single 'data' and 'person'
+function drawLongChart(data, person, svg, zoomSvg, includeBrush = true, customBrushCallback = null) {
     svg.selectAll("*").remove();
 
     const margin = { top: 20, right: 40, bottom: 60, left: 80 },
@@ -475,17 +592,17 @@ function drawLongChart(data, person, svg, zoomSvg, includeBrush = true, customBr
         height = 200 - margin.top - margin.bottom;
 
     const x = d3.scaleLinear()
-        .domain([0, d3.max(data, d => d.time)]) // Use 'data' directly
+        .domain([0, d3.max(data, d => d.time)])
         .range([0, width]);
 
     const y = d3.scaleLinear()
-        .domain([0, Math.max(2, d3.max(data, d => d.interval))]) // Use 'data' directly
+        .domain([0, Math.max(2, d3.max(data, d => d.interval))])
         .range([height, 0]);
 
     const chart = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // X-axis
+
     chart.append("g")
         .attr("transform", `translate(0,${height})`)
         .call(d3.axisBottom(x))
@@ -497,7 +614,7 @@ function drawLongChart(data, person, svg, zoomSvg, includeBrush = true, customBr
         .style("font-size", "14px")
         .text("Time (seconds)");
 
-    // Y-axis
+
     chart.append("g")
         .call(d3.axisLeft(y))
         .append("text")
@@ -509,7 +626,7 @@ function drawLongChart(data, person, svg, zoomSvg, includeBrush = true, customBr
         .style("font-size", "14px")
         .text("Stride Interval (s)");
 
-    // Data points (now for the single 'data' array)
+
     chart.selectAll(".data-dot")
         .data(data)
         .enter()
@@ -518,12 +635,12 @@ function drawLongChart(data, person, svg, zoomSvg, includeBrush = true, customBr
         .attr("cx", d => x(d.time))
         .attr("cy", d => y(d.interval))
         .attr("r", 6)
-        .attr("fill", person.color) // Use the color from the 'person' object
+        .attr("fill", person.color)
         .attr("opacity", 0.8)
         .attr("stroke", "white")
         .attr("stroke-width", 2);
 
-    // Brush remains the same, but it will operate on the single dataset
+
     if (includeBrush) {
         const brush = d3.brushX()
             .extent([[0, 0], [width, height]])
@@ -532,24 +649,24 @@ function drawLongChart(data, person, svg, zoomSvg, includeBrush = true, customBr
                 const [x0, x1] = selection.map(x.invert);
 
                 if (customBrushCallback) {
-                    // If a custom callback is provided, use it
-                    customBrushCallback(x0, x1); // Pass the brush range to the custom callback
+
+                    customBrushCallback(x0, x1);
                 } else {
-                    // Existing Slide 2 brush logic
+
                     drawZoomChart(
-                        data.filter(d => d.time >= x0 && d.time <= x1), // Filter the single data array
-                        person, // Pass the person object
+                        data.filter(d => d.time >= x0 && d.time <= x1),
+                        person,
                         zoomSvg,
                         x0
                     );
-                    currentZoomData = data.filter(d => d.time >= x0 && d.time <= x1); // Store for replay
+                    currentZoomData = data.filter(d => d.time >= x0 && d.time <= x1);
                 }
             });
 
         chart.append("g")
             .attr("class", "brush")
             .call(brush)
-            .call(brush.move, [0, 10].map(x)); // Initial brush range
+            .call(brush.move, [0, 10].map(x));
     }
 }
 
@@ -560,12 +677,12 @@ function drawZoomChart(intervals, person, svg, startTime = 0, comparisonData = n
         width = 800 - margin.left - margin.right,
         height = 400 - margin.top - margin.bottom;
 
-    // Filter to only include intervals within the 10-second window
+
     const endTime = startTime + 10;
-    const zoomedData = intervals.filter(d => d.time >= startTime && d.time <= endTime); 
-    currentZoomData = zoomedData.map(d => ({ 
-        ...d, 
-        time: d.time - startTime 
+    const zoomedData = intervals.filter(d => d.time >= startTime && d.time <= endTime);
+    currentZoomData = zoomedData.map(d => ({
+        ...d,
+        time: d.time - startTime
     }));
     console.log('Zoomed data:', currentZoomData);
 
@@ -583,7 +700,7 @@ function drawZoomChart(intervals, person, svg, startTime = 0, comparisonData = n
     const chart = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // x-axis with label
+
     chart.append("g")
         .attr("transform", `translate(0,${height})`)
         .call(d3.axisBottom(x))
@@ -595,7 +712,7 @@ function drawZoomChart(intervals, person, svg, startTime = 0, comparisonData = n
         .style("font-size", "14px")
         .text('Time (seconds)');
 
-    // y-axis with label
+
     chart.append("g")
         .call(d3.axisLeft(y))
         .append("text")
@@ -607,7 +724,7 @@ function drawZoomChart(intervals, person, svg, startTime = 0, comparisonData = n
         .style("font-size", "14px")
         .text("Stride Interval (s)");
 
-    // Data points
+
     chart.selectAll(".zoom-dot")
         .data(zoomedData)
         .enter()
@@ -620,9 +737,9 @@ function drawZoomChart(intervals, person, svg, startTime = 0, comparisonData = n
         .attr("opacity", 0.8)
         .attr("stroke", "white")
         .attr("stroke-width", 2)
-        .attr("data-original-fill", person.color); // Store original color here
+        .attr("data-original-fill", person.color);
 
-    // If comparison data is provided, draw it
+
     if (comparisonData && comparisonPerson) {
         chart.selectAll(".comparison-dot")
             .data(comparisonData)
@@ -636,7 +753,7 @@ function drawZoomChart(intervals, person, svg, startTime = 0, comparisonData = n
             .attr("opacity", 0.8)
             .attr("stroke", "white")
             .attr("stroke-width", 2)
-            .attr("data-original-fill", comparisonPerson.color); // Store original color here
+            .attr("data-original-fill", comparisonPerson.color);
     }
 }
 
@@ -654,26 +771,26 @@ function replayZoomSteps(zoomData, svgZoom, char) {
     sortedData.forEach((step, i) => {
         const delay = (step.time - baseTime) * 1000;
         setTimeout(() => {
-            // Animate the dot
+
             const dot = d3.select(dots.nodes()[i]);
-            // In replayZoomSteps function:
+
             if (!dot.empty()) {
-                const originalFill = dot.attr("data-original-fill"); // Get original color
+                const originalFill = dot.attr("data-original-fill");
 
                 dot.transition()
                     .duration(300)
                     .attr("r", 10)
-                    .attr("fill", "#ff6b6b") // Highlight color during animation
+                    .attr("fill", "#ff6b6b")
                     .attr("opacity", 1)
                     .transition()
                     .duration(300)
                     .attr("r", 6)
-                    .attr("fill", originalFill) // Use the stored original color
+                    .attr("fill", originalFill)
                     .attr("opacity", 0.8);
             }
             takeStep(controlChar);
 
-            // Reset to center after short delay
+
         }, delay);
     });
 
@@ -682,10 +799,10 @@ function replayZoomSteps(zoomData, svgZoom, char) {
 }
 
 
-// Updated function to draw Bob's chart on slide 1
+
 function drawBobChart(stepData) {
     bobChartSvg.selectAll("*").remove();
-    
+
     const margin = { top: 20, right: 40, bottom: 60, left: 80 },
         width = 800 - margin.left - margin.right,
         height = 400 - margin.top - margin.bottom;
@@ -694,16 +811,16 @@ function drawBobChart(stepData) {
         .domain([0, 10])
         .range([0, width]);
 
-    // Dynamic y-scale based on actual stride intervals
+
     const maxInterval = stepData.length > 0 ? d3.max(stepData, d => d.interval) : 2;
     const y = d3.scaleLinear()
-        .domain([0, Math.max(2, maxInterval * 1.1)]) // Add 10% padding
+        .domain([0, Math.max(2, maxInterval * 1.1)])
         .range([height, 0]);
 
     const chart = bobChartSvg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // Add grid lines
+
     const xGrid = d3.axisBottom(x).tickSize(-height).tickFormat("");
     const yGrid = d3.axisLeft(y).tickSize(-width).tickFormat("");
 
@@ -720,7 +837,7 @@ function drawBobChart(stepData) {
         .style("stroke-dasharray", "3,3")
         .style("opacity", 0.3);
 
-    // Add axes
+
     chart.append("g")
         .attr("transform", `translate(0,${height})`)
         .call(d3.axisBottom(x).tickSize(8))
@@ -747,7 +864,7 @@ function drawBobChart(stepData) {
         .style("font-weight", "600")
         .text("Stride Interval (seconds)");
 
-    // Plot Bob's stride intervals
+
     if (stepData.length > 0) {
         const dots = chart.selectAll(".bob-dot")
             .data(stepData)
@@ -761,8 +878,8 @@ function drawBobChart(stepData) {
             .attr("opacity", 0.8)
             .attr("stroke", "white")
             .attr("stroke-width", 3);
-            
-        // Store the dots selection for animation
+
+
         bobDots = dots;
 
         chart.append("path")
@@ -772,7 +889,7 @@ function drawBobChart(stepData) {
             .attr("stroke-width", 2)
             .attr("opacity", 0.5)
     } else {
-        // Show message if no stride intervals could be calculated
+
         chart.append("text")
             .attr("x", width / 2)
             .attr("y", height / 2)
@@ -784,9 +901,9 @@ function drawBobChart(stepData) {
 }
 
 async function drawChart(showLines = false) {
-    // Always target the bobChartSvg for Slide 1
+
     const svg = d3.select('#bobChartSvg');
-    svg.selectAll("*").remove(); // Clear previous content
+    svg.selectAll("*").remove();
 
     const bobStepData = processStepsToData(bobSteps);
 
@@ -795,31 +912,31 @@ async function drawChart(showLines = false) {
         return;
     }
 
-    // Get the SVG dimensions from the viewBox or actual size
+
     const svgElement = svg.node();
     const svgRect = svgElement.getBoundingClientRect();
-    // Use default values if SVG dimensions are not readily available (e.g., during testing or if not rendered)
+
     const width = svgRect.width || 800;
     const height = svgRect.height || 400;
     const margin = { top: 40, right: 40, bottom: 60, left: 60 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    // Update SVG viewBox if needed
+
     svg.attr("viewBox", `0 0 ${width} ${height}`);
 
     const x = d3.scaleLinear()
-        .domain([0, 10]) // Fixed domain for 10 seconds of Bob's walk
+        .domain([0, 10])
         .range([0, innerWidth]);
 
     const y = d3.scaleLinear()
-        .domain([0, Math.max(2, d3.max(bobStepData, d => d.interval))]) // Domain based on Bob's interval data
+        .domain([0, Math.max(2, d3.max(bobStepData, d => d.interval))])
         .range([innerHeight, 0]);
 
     const chart = svg.append("g")
         .attr("transform", `translate(<span class="math-inline">\{margin\.left\},</span>{margin.top})`);
 
-    // Add grid lines
+
     const xGrid = d3.axisBottom(x).tickSize(-innerHeight).tickFormat("");
     const yGrid = d3.axisLeft(y).tickSize(-innerWidth).tickFormat("");
 
@@ -836,7 +953,7 @@ async function drawChart(showLines = false) {
         .style("stroke-dasharray", "3,3")
         .style("opacity", 0.3);
 
-    // Add axes
+
     chart.append("g")
         .attr("transform", `translate(0,${innerHeight})`)
         .call(d3.axisBottom(x).tickSize(8))
@@ -863,9 +980,9 @@ async function drawChart(showLines = false) {
         .style("font-weight", "600")
         .text("Stride Interval (seconds)");
 
-    // Plot Bob's stride intervals
+
     if (bobStepData.length > 0) {
-        // Add connecting line for Bob's data if showLines is true
+
         if (showLines) {
             const bobLine = d3.line()
                 .x(d => x(d.time))
@@ -898,55 +1015,57 @@ async function drawChart(showLines = false) {
 }
 
 function startWalk() {
-    if (recordingMode === 'vision' && !cameraEnabled) {
-        statusEl.textContent = "Enable the camera tracker before recording.";
-        return;
-    }
     reset();
     isRecording = true;
     startTime = performance.now();
-    startBtn.disabled = true;
-    startBtn.textContent = "Recording...";
+    if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.textContent = "Recording...";
+    }
     statusEl.textContent = "Click the character to record steps for 10 seconds";
-    
-    // Start the timer in the appropriate slide
-    const timer = currentSlide === 0 ? 
-        document.getElementById('timer1') : 
+
+
+    const timer = currentSlide === 0 ?
+        document.getElementById('timer1') :
         document.getElementById('timer4');
     if (timer) {
         startTimer(timer);
     }
-    
+
     console.log('Recording started at:', startTime);
-    
+
     setTimeout(() => {
         isRecording = false;
         statusEl.textContent = `Recording complete. ${bobSteps.length} steps recorded.`;
         console.log('Recording ended. Total steps:', bobSteps.length);
         console.log('Step times:', bobSteps);
-        
+
         if (bobSteps.length > 0) {
-            // Process and show Bob's chart
+
             const bobStepData = processStepsToData(bobSteps);
-            
-            // If we're in slide 1, draw the bob chart
+
+
             if (document.getElementById("bobChart")) {
                 drawBobChart(bobStepData);
                 document.getElementById("bobChart").style.display = "block";
             }
-            
-            // Show replay button
+
+
             replayBtn.style.display = "inline-block";
             if (nextBtn1) nextBtn1.disabled = false;
-            
-            startBtn.textContent = "Record Again";
-            startBtn.disabled = false;
+
+            if (startBtn) {
+                startBtn.textContent = "Record Again";
+                startBtn.disabled = false;
+            }
         } else {
             statusEl.textContent = "No steps recorded. Try clicking during the recording period.";
-            startBtn.disabled = false;
-            startBtn.textContent = "Start Recording";
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.textContent = "Start Recording";
+            }
         }
-        // change next button text
+
         document.getElementById("nextBtn1").textContent = "Continue";
     }, WALK_DURATION_MS);
 }
@@ -966,26 +1085,26 @@ function takeStep(element) {
 
 function replaySteps() {
     if (bobSteps.length === 0) return;
-    
+
     replayBtn.disabled = true;
     replayBtn.textContent = "Replaying...";
-    
+
     bobEl.style.transform = "translateX(0px)";
     stepRight = true;
-    
-    // Get all bob-dot elements from both charts
-    const currentSlideChart = currentSlide === 0 ? 
+
+
+    const currentSlideChart = currentSlide === 0 ?
         d3.select('#bobChartSvg').selectAll(".bob-dot") :
         d3.select('#playgroundChart').selectAll(".bob-dot");
-    
+
     bobSteps.forEach((stepTime, i) => {
         setTimeout(() => {
             takeStep(bobEl);
 
-            // Function to animate a dot
+
             const animateDot = (dot) => {
                 if (dot.empty()) return;
-                
+
                 dot.transition()
                     .duration(300)
                     .attr("r", 12)
@@ -998,13 +1117,13 @@ function replaySteps() {
                     .attr("opacity", 0.8);
             };
 
-            // Animate the corresponding dot in the current slide's chart
+
             if (currentSlideChart && currentSlideChart.nodes() && currentSlideChart.nodes()[i]) {
                 animateDot(d3.select(currentSlideChart.nodes()[i]));
             }
         }, stepTime);
     });
-    
+
     const totalTime = bobSteps[bobSteps.length - 1] || 0;
     setTimeout(() => {
         replayBtn.disabled = false;
@@ -1110,7 +1229,7 @@ function showApplication(type, event) {
             icon: ''
         },
         'monitoring': {
-            title: 'Treatment Monitoring', 
+            title: 'Treatment Monitoring',
             description: 'Gait data provides objective measurements of treatment effectiveness. Doctors can adjust medications based on walking pattern changes.',
             icon: ''
         },
@@ -1123,13 +1242,13 @@ function showApplication(type, event) {
 
     const app = applications[type];
     if (app) {
-        // Visual feedback for selected application
+
         document.querySelectorAll('.impact-card').forEach(card => {
             card.style.transform = 'scale(0.95)';
             card.style.opacity = '0.7';
         });
-        
-        // Check if event exists before accessing target
+
+
         if (event && event.target) {
             const targetCard = event.target.closest('.impact-card');
             if (targetCard) {
@@ -1137,7 +1256,7 @@ function showApplication(type, event) {
                 targetCard.style.opacity = '1';
             }
         }
-        
+
         setTimeout(() => {
             document.querySelectorAll('.impact-card').forEach(card => {
                 card.style.transform = 'scale(1)';
@@ -1148,12 +1267,12 @@ function showApplication(type, event) {
 }
 function playJourney() {
     if (journeyPlaying) return;
-    
+
     journeyPlaying = true;
     const playBtn = document.getElementById('playBtn');
     playBtn.disabled = true;
     playBtn.textContent = 'Playing...';
-    
+
     resetJourney();
     animateJourney();
 }
@@ -1165,7 +1284,7 @@ function resetJourney() {
     items.forEach(item => {
         item.classList.remove('active');
     });
-    
+
     const playBtn = document.getElementById('playBtn');
     playBtn.disabled = false;
     playBtn.textContent = 'Play Journey';
@@ -1173,28 +1292,28 @@ function resetJourney() {
 
 function animateJourney() {
     if (journeyStage >= 5) {
-        // Journey complete
+
         setTimeout(() => {
             resetJourney();
         }, 2000);
         return;
     }
-    
-    // Activate current stage
+
+
     const currentItem = document.querySelector(`[data-stage="${journeyStage}"]`);
     if (currentItem) {
         currentItem.classList.add('active');
     }
-    
+
     journeyStage++;
-    
-    // Continue animation
+
+
     setTimeout(() => {
         animateJourney();
     }, 1500);
 }
 
-// Function to update multi-comparison charts on slide 4
+
 async function updateMultiCharts() {
     const selectedId1 = personSelectMulti1.value;
     const selectedId2 = personSelectMulti2.value;
@@ -1206,31 +1325,31 @@ async function updateMultiCharts() {
     let data1 = [];
     let data2 = [];
 
-    // Clear previous charts
+
     d3.select("#multiChart1").selectAll("*").remove();
     d3.select("#multiChart2").selectAll("*").remove();
     d3.select("#multiZoomChart").selectAll("*").remove();
     multiLegend.style.display = "none";
     multiPlayBtn.disabled = true;
 
-    // Set fixed colors for person1 and person2 for drawLongChart
-    const person1FixedColor = { color: "#6f42c1" }; // Fixed purple
-    const person2FixedColor = { color: "#fd7e14" }; // Fixed orange
 
-    // Load data for Person 1
+    const person1FixedColor = { color: "#6f42c1" };
+    const person2FixedColor = { color: "#fd7e14" };
+
+
     if (selectedId1) {
         person1 = EXPLORE_PEOPLE.find((p) => p.id == selectedId1);
         data1 = await loadCSVData(person1);
     }
 
-    // Load data for Person 2
+
     if (selectedId2) {
         person2 = EXPLORE_PEOPLE.find((p) => p.id == selectedId2);
         data2 = await loadCSVData(person2);
     }
-    
-    // Initialize current filtered data for the 0-10s window (or empty if no data)
-    // This ensures a default view when the slide loads or dropdowns change without brushing
+
+
+
     currentFilteredBobData = bobData
         .filter((d) => d.time >= 0 && d.time <= 10)
         .map((d) => ({ ...d, time: d.time - 0 }));
@@ -1251,28 +1370,28 @@ async function updateMultiCharts() {
         currentFilteredPerson2Data = [];
     }
 
-    // Brush callback for Person 1's long chart
-    // This callback ONLY affects currentFilteredPerson1Data
+
+
     const person1BrushCallback = (x0, x1) => {
-        currentFilteredPerson1Data = data1 // Use the full data1 here
+        currentFilteredPerson1Data = data1
             .filter((d) => d.time >= x0 && d.time <= x1)
-            .map((d) => ({ ...d, time: d.time - x0 })); // Normalize time to be between 0 and 10 based on brush start
+            .map((d) => ({ ...d, time: d.time - x0 }));
 
-        // Recalculate maxOverallTime based on ALL currently filtered data
+
         const maxOverallTime = Math.max(
             d3.max(currentFilteredBobData, (d) => d.time) || 0,
             d3.max(currentFilteredPerson1Data, (d) => d.time) || 0,
             d3.max(currentFilteredPerson2Data, (d) => d.time) || 0
         );
-        
-        // Redraw multiZoomChart with updated Person 1 data and existing Bob/Person 2 data
+
+
         drawMultiZoomChart(
             currentFilteredBobData, {name: "Bob", color: "#007acc"},
-            currentFilteredPerson1Data, person1, // Use currentFilteredPerson1Data
-            currentFilteredPerson2Data, person2, // Use currentFilteredPerson2Data (can be empty if not brushed/selected)
+            currentFilteredPerson1Data, person1,
+            currentFilteredPerson2Data, person2,
             maxOverallTime
         );
-        // Update currentZoomData for replay button
+
         currentZoomData = {
             bob: currentFilteredBobData,
             person1: currentFilteredPerson1Data,
@@ -1280,28 +1399,28 @@ async function updateMultiCharts() {
         };
     };
 
-    // Brush callback for Person 2's long chart
-    // This callback ONLY affects currentFilteredPerson2Data
+
+
     const person2BrushCallback = (x0, x1) => {
-        currentFilteredPerson2Data = data2 // Use the full data2 here
+        currentFilteredPerson2Data = data2
             .filter((d) => d.time >= x0 && d.time <= x1)
-            .map((d) => ({ ...d, time: d.time - x0 })); // Normalize time to be between 0 and 10 based on brush start
+            .map((d) => ({ ...d, time: d.time - x0 }));
 
-        // Recalculate maxOverallTime based on ALL currently filtered data
+
         const maxOverallTime = Math.max(
             d3.max(currentFilteredBobData, (d) => d.time) || 0,
             d3.max(currentFilteredPerson1Data, (d) => d.time) || 0,
             d3.max(currentFilteredPerson2Data, (d) => d.time) || 0
         );
 
-        // Redraw multiZoomChart with updated Person 2 data and existing Bob/Person 1 data
+
         drawMultiZoomChart(
             currentFilteredBobData, {name: "Bob", color: "#007acc"},
-            currentFilteredPerson1Data, person1, // Use currentFilteredPerson1Data (can be empty if not brushed/selected)
-            currentFilteredPerson2Data, person2, // Use currentFilteredPerson2Data
+            currentFilteredPerson1Data, person1,
+            currentFilteredPerson2Data, person2,
             maxOverallTime
         );
-        // Update currentZoomData for replay button
+
         currentZoomData = {
             bob: currentFilteredBobData,
             person1: currentFilteredPerson1Data,
@@ -1309,7 +1428,7 @@ async function updateMultiCharts() {
         };
     };
 
-    // Draw long charts for selected persons, passing their specific brush callbacks
+
     if (selectedId1) {
         drawLongChart(data1, { ...person1, color: person1FixedColor.color }, d3.select("#multiChart1"), d3.select("#multiZoomChart"), true, person1BrushCallback);
     }
@@ -1317,8 +1436,8 @@ async function updateMultiCharts() {
         drawLongChart(data2, { ...person2, color: person2FixedColor.color }, d3.select("#multiChart2"), d3.select("#multiZoomChart"), true, person2BrushCallback);
     }
 
-    // Initial draw of the combined zoom chart with the first 10 seconds if no brush has been moved yet
-    // This uses the initially filtered data (0-10s)
+
+
     if (bobData.length > 0 && (selectedId1 || selectedId2)) {
         const maxOverallTime = Math.max(
             d3.max(currentFilteredBobData, (d) => d.time) || 0,
@@ -1334,10 +1453,10 @@ async function updateMultiCharts() {
             person2,
             maxOverallTime
         );
-        multiLegend.style.display = "flex"; // Show legend
-        multiPlayBtn.disabled = false; // Enable play button
-        updateMultiLegend(person1, person2); // Update legend labels and colors
-        // Store the initial normalized data for replay
+        multiLegend.style.display = "flex";
+        multiPlayBtn.disabled = false;
+        updateMultiLegend(person1, person2);
+
         currentZoomData = {
             bob: currentFilteredBobData,
             person1: currentFilteredPerson1Data,
@@ -1351,7 +1470,7 @@ async function updateMultiCharts() {
 
 function updateMultiLegend(person1, person2) {
     if (person1) {
-        person1LegendDot.style.backgroundColor = "#6f42c1"; // Fixed purple for Person 1 in legend
+        person1LegendDot.style.backgroundColor = "#6f42c1";
         person1LegendLabel.textContent = person1.name;
     } else {
         person1LegendDot.style.backgroundColor = "transparent";
@@ -1359,7 +1478,7 @@ function updateMultiLegend(person1, person2) {
     }
 
     if (person2) {
-        person2LegendDot.style.backgroundColor = "#fd7e14"; // Fixed orange for Person 2 in legend
+        person2LegendDot.style.backgroundColor = "#fd7e14";
         person2LegendLabel.textContent = person2.name;
     } else {
         person2LegendDot.style.backgroundColor = "transparent";
@@ -1367,7 +1486,29 @@ function updateMultiLegend(person1, person2) {
     }
 }
 
-// New function to draw the combined zoom chart for Bob, Person 1, and Person 2
+function applyScenarioPreset(presetKey, activeChip = null) {
+    const preset = SCENARIO_PRESETS[presetKey];
+    if (!preset) return;
+
+    if (personSelectMulti1) {
+        personSelectMulti1.value = preset.person1 ? String(preset.person1) : "";
+    }
+    if (personSelectMulti2) {
+        personSelectMulti2.value = preset.person2 ? String(preset.person2) : "";
+    }
+
+    if (scenarioDescriptionEl) {
+        scenarioDescriptionEl.textContent = preset.description || "";
+    }
+
+    if (activeChip) {
+        scenarioChips.forEach(chip => chip.classList.toggle('active', chip === activeChip));
+    }
+
+    updateMultiCharts();
+}
+
+
 function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, person2Data, person2Person, maxTime) {
     const svg = d3.select("#multiZoomChart");
     svg.selectAll("*").remove();
@@ -1377,7 +1518,7 @@ function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, pers
         height = 400 - margin.top - margin.bottom;
 
     const x = d3.scaleLinear()
-        .domain([0, 10]) // Use the maximum time across all datasets
+        .domain([0, 10])
         .range([0, width]);
 
     const allIntervals = [
@@ -1394,7 +1535,7 @@ function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, pers
     const chart = svg.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    // X-axis
+
     chart.append("g")
         .attr("transform", `translate(0,${height})`)
         .call(d3.axisBottom(x))
@@ -1406,7 +1547,7 @@ function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, pers
         .style("font-size", "14px")
         .text("Time (seconds)");
 
-    // Y-axis
+
     chart.append("g")
         .call(d3.axisLeft(y))
         .append("text")
@@ -1418,7 +1559,7 @@ function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, pers
         .style("font-size", "14px")
         .text("Stride Interval (s)");
 
-    // Plot Bob's data
+
     if (bobData.length > 0) {
         chart.selectAll(".bob-zoom-dot")
             .data(bobData)
@@ -1434,7 +1575,7 @@ function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, pers
             .attr("stroke-width", 2);
     }
 
-    // Plot Person 1 data (always purple)
+
     if (person1Data.length > 0 && person1Person) {
         chart.selectAll(".person1-zoom-dot")
             .data(person1Data)
@@ -1444,13 +1585,13 @@ function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, pers
             .attr("cx", d => x(d.time))
             .attr("cy", d => y(d.interval))
             .attr("r", 6)
-            .attr("fill", "#6f42c1") // Fixed purple for Person 1
+            .attr("fill", "#6f42c1")
             .attr("opacity", 0.8)
             .attr("stroke", "white")
             .attr("stroke-width", 2);
     }
 
-    // Plot Person 2 data (always orange)
+
     if (person2Data.length > 0 && person2Person) {
         chart.selectAll(".person2-zoom-dot")
             .data(person2Data)
@@ -1460,20 +1601,20 @@ function drawMultiZoomChart(bobData, bobPerson, person1Data, person1Person, pers
             .attr("cx", d => x(d.time))
             .attr("cy", d => y(d.interval))
             .attr("r", 6)
-            .attr("fill", "#fd7e14") // Fixed orange for Person 2
+            .attr("fill", "#fd7e14")
             .attr("opacity", 0.8)
             .attr("stroke", "white")
             .attr("stroke-width", 2);
     }
 
-    // Store for replay
+
     currentZoomData = { bob: bobData, person1: person1Data, person2: person2Data };
 }
 
 async function playMultiWalk() {
-    const bobZoom = currentFilteredBobData || []; // Use global filtered data
-    const person1Zoom = currentFilteredPerson1Data || []; // Use global filtered data
-    const person2Zoom = currentFilteredPerson2Data || []; // Use global filtered data
+    const bobZoom = currentFilteredBobData || [];
+    const person1Zoom = currentFilteredPerson1Data || [];
+    const person2Zoom = currentFilteredPerson2Data || [];
 
     if (!bobZoom.length && !person1Zoom.length && !person2Zoom.length) {
         console.log("No data to replay in multi-walk.");
@@ -1483,7 +1624,7 @@ async function playMultiWalk() {
     multiPlayBtn.disabled = true;
     multiPlayBtn.textContent = "Playing...";
 
-    // Reset emoji positions
+
     document.getElementById("bobMultiEmoji").style.transform = "translateX(0px)";
     if (person1MultiEmoji) person1MultiEmoji.style.transform = "translateX(0px)";
     if (person2MultiEmoji) person2MultiEmoji.style.transform = "translateX(0px)";
@@ -1518,32 +1659,32 @@ async function playMultiWalk() {
             } else if (step.type === 'person1' && person1MultiEmoji) {
                 charElement = person1MultiEmoji;
                 dotSelector = ".person1-zoom-dot";
-                fillColor = "#6f42c1"; // Fixed purple for Person 1
+                fillColor = "#6f42c1";
             } else if (step.type === 'person2' && person2MultiEmoji) {
                 charElement = person2MultiEmoji;
                 dotSelector = ".person2-zoom-dot";
-                fillColor = "#fd7e14"; // Fixed orange for Person 2
+                fillColor = "#fd7e14";
             } else {
-                return; // Skip if element not found
+                return;
             }
 
-            // Animate the character
+
             takeStep(charElement);
 
-            // Animate the corresponding dot on the multiZoomChart
+
             const dot = d3.select(charElement.closest('.slide').querySelector('#multiZoomChart')).selectAll(dotSelector)
-                .filter(d => d && d.time === step.time); // Match the specific dot by time
+                .filter(d => d && d.time === step.time);
 
             if (!dot.empty()) {
                 dot.transition()
                     .duration(300)
                     .attr("r", 10)
-                    .attr("fill", "#ff6b6b") // Highlight color during animation
+                    .attr("fill", "#ff6b6b")
                     .attr("opacity", 1)
                     .transition()
                     .duration(300)
                     .attr("r", 6)
-                    .attr("fill", fillColor) // Return to original color
+                    .attr("fill", fillColor)
                     .attr("opacity", 0.8);
             }
         }, delay);
@@ -1554,141 +1695,4 @@ async function playMultiWalk() {
         multiPlayBtn.textContent = "Play All Walks";
         if (timer4) timer4.style.display = "none";
     }, maxAnimationTime + 1000);
-}
-
-async function handleCameraToggle() {
-    if (cameraEnabled) {
-        statusEl.textContent = "Camera tracking is already active.";
-        return;
-    }
-    await enableCameraTracking();
-}
-
-async function enableCameraTracking() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        if (cameraStatusEl) cameraStatusEl.textContent = "Camera not supported in this browser.";
-        return;
-    }
-
-    try {
-        recordingMode = 'vision';
-        if (cameraStatusEl) cameraStatusEl.textContent = "Initializing camera...";
-        cameraToggleBtn.disabled = true;
-        await loadPoseDetector();
-        await startCameraStream();
-        startPoseLoop();
-        cameraEnabled = true;
-        if (cameraStatusEl) cameraStatusEl.textContent = "Camera ready. Press Start Recording to capture steps.";
-        cameraToggleBtn.textContent = "Camera Tracking Enabled";
-    } catch (error) {
-        console.error("Camera init error:", error);
-        recordingMode = 'manual';
-        cameraEnabled = false;
-        cameraToggleBtn.disabled = false;
-        if (cameraStatusEl) cameraStatusEl.textContent = "Unable to access camera. Check permissions.";
-    }
-}
-
-async function loadPoseDetector() {
-    if (poseDetector) return;
-    const detectorConfig = {
-        modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
-    };
-    poseDetector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, detectorConfig);
-}
-
-async function startCameraStream() {
-    if (cameraStream) return;
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-            width: 720,
-            height: 540
-        }
-    });
-    if (cameraVideoEl) {
-        cameraVideoEl.srcObject = cameraStream;
-        await cameraVideoEl.play();
-        adjustPoseCanvasSize();
-    }
-}
-
-function adjustPoseCanvasSize() {
-    if (!cameraVideoEl || !poseCanvasEl) return;
-    poseCanvasEl.width = cameraVideoEl.videoWidth || 720;
-    poseCanvasEl.height = cameraVideoEl.videoHeight || 540;
-}
-
-function startPoseLoop() {
-    if (poseAnimationFrame || !poseDetector || !cameraVideoEl) return;
-
-    const estimationConfig = {
-        flipHorizontal: true
-    };
-
-    const detectPose = async () => {
-        if (!poseDetector || !cameraEnabled) {
-            poseAnimationFrame = null;
-            return;
-        }
-
-        const poses = await poseDetector.estimatePoses(cameraVideoEl, estimationConfig);
-        if (poses && poses.length > 0) {
-            drawPose(poses[0]);
-            analyzePoseForSteps(poses[0]);
-        } else if (poseCtx && poseCanvasEl) {
-            poseCtx.clearRect(0, 0, poseCanvasEl.width, poseCanvasEl.height);
-        }
-
-        poseAnimationFrame = requestAnimationFrame(detectPose);
-    };
-
-    detectPose();
-}
-
-function drawPose(pose) {
-    if (!poseCtx || !poseCanvasEl) return;
-    poseCtx.clearRect(0, 0, poseCanvasEl.width, poseCanvasEl.height);
-    poseCtx.strokeStyle = "#00d2d3";
-    poseCtx.lineWidth = 4;
-    poseCtx.fillStyle = "#ff6b6b";
-
-    pose.keypoints.forEach(point => {
-        if (point.score > 0.5) {
-            const x = poseCanvasEl.width - point.x * poseCanvasEl.width;
-            const y = point.y * poseCanvasEl.height;
-            poseCtx.beginPath();
-            poseCtx.arc(x, y, 5, 0, Math.PI * 2);
-            poseCtx.fill();
-        }
-    });
-}
-
-function analyzePoseForSteps(pose) {
-    if (!isRecording || recordingMode !== 'vision') return;
-    const leftAnkle = pose.keypoints.find(k => k.name === 'left_ankle');
-    const rightAnkle = pose.keypoints.find(k => k.name === 'right_ankle');
-
-    if (!leftAnkle || !rightAnkle) return;
-    if (leftAnkle.score < 0.5 || rightAnkle.score < 0.5) return;
-
-    const separation = Math.abs(leftAnkle.x - rightAnkle.x);
-
-    if (!footStateApart && separation > STEP_SEPARATION_THRESHOLD) {
-        recordVisionStep();
-        footStateApart = true;
-    } else if (footStateApart && separation < STEP_SEPARATION_THRESHOLD * 0.6) {
-        footStateApart = false;
-    }
-}
-
-function recordVisionStep() {
-    if (!isRecording || recordingMode !== 'vision' || !startTime) return;
-    const now = performance.now();
-    const elapsed = now - startTime;
-    if (elapsed > WALK_DURATION_MS) return;
-    if (elapsed - lastRecordedStepTime < MIN_STEP_INTERVAL_MS) return;
-
-    bobSteps.push(elapsed);
-    lastRecordedStepTime = elapsed;
-    statusEl.textContent = `Step detected: ${bobSteps.length}`;
 }

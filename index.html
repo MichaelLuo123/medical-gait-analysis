@@ -5,40 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gait Pattern Analyzer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.16.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@3.1.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div class="progress-panel">
+        <div class="progress-meta">
+            <span id="slideProgressLabel">Slide 1 of 8</span>
+        </div>
+        <div class="progress-bar-track">
+            <div id="slideProgressFill" class="progress-bar-fill"></div>
+        </div>
+    </div>
     <div class="slides-container">
         <!-- Slide 1: Meet Bob -->
         <div class="slide active" id="slide1">
             <h1>Gait Pattern Analyzer</h1>
             <h2>Interactive Recording</h2>
-            <p>Use the camera-enabled tracker or the on-screen character to record your walking rhythm for 10 seconds.</p>
-            
-            <div class="camera-panel">
-                <div class="camera-panel-header">
-                    <h3>Computer Vision Tracking (Beta)</h3>
-                    <p>Enable your webcam to capture live movement via pose detection. Stand far enough back so your full body is visible.</p>
-                </div>
-                <div class="camera-preview">
-                    <video id="cameraFeed" playsinline muted></video>
-                    <canvas id="poseCanvas"></canvas>
-                </div>
-                <div class="camera-controls">
-                    <button id="cameraToggleBtn" class="secondary-btn">Enable Camera Tracking</button>
-                    <span id="cameraStatus" class="camera-status">Camera tracking is off</span>
-                </div>
-            </div>
+            <p>Click Bob to record your walking rhythm for 10 seconds.</p>
 
             <div class="bob-container">
                 <span id="bob">🧍</span>
                 <div id="timer1" class="timer"></div>
             </div>
             
-            <div class="controls">
+            <div class="controls recording-controls">
                 <button id="startBtn" class="primary-btn">Start Recording</button>
                 <button id="replayBtn" class="secondary-btn" style="display: none;">Replay Walk</button>
             </div>
@@ -127,6 +117,29 @@
                     <span id="comparisonLabel">Comparison</span>
                 </div>
             </div>
+
+            <div id="insightCard" class="insight-card" style="display: none;">
+                <div class="insight-card-header">
+                    <h4 id="insightTitle">Gait Snapshot</h4>
+                    <span id="insightSubtitle">Live metrics</span>
+                </div>
+                <div class="insight-metric">
+                    <span class="metric-label">Avg stride interval</span>
+                    <span class="metric-value" id="insightAvg">--</span>
+                </div>
+                <div class="insight-metric">
+                    <span class="metric-label">Cadence (est.)</span>
+                    <span class="metric-value" id="insightCadence">--</span>
+                </div>
+                <div class="insight-metric">
+                    <span class="metric-label">Variability</span>
+                    <span class="metric-value" id="insightVariability">--</span>
+                </div>
+                <div class="insight-metric" id="insightDeltaGroup" style="display: none;">
+                    <span class="metric-label">Vs. control</span>
+                    <span class="metric-value" id="insightDelta">--</span>
+                </div>
+            </div>
             
             <div class="chart-container" id="controlChart" style="display: block;">
                 <h3>Full Walking Pattern</h3>
@@ -172,6 +185,20 @@
                         <option value="">-- Select Person 2 --</option>
                     </select>
                 </div>
+            </div>
+
+            <div class="scenario-presets">
+                <div class="scenario-presets-header">
+                    <h4>Quick Comparisons</h4>
+                    <p>Load curated pairings that highlight notable gait differences.</p>
+                </div>
+                <div class="scenario-chip-group">
+                    <button class="scenario-chip" data-preset="controlAges">Young vs Senior Control</button>
+                    <button class="scenario-chip" data-preset="alsStages">ALS Early vs Late</button>
+                    <button class="scenario-chip" data-preset="parkinsonStages">Parkinson’s Early vs Late</button>
+                    <button class="scenario-chip" data-preset="controlVsAls">Control vs ALS Medium</button>
+                </div>
+                <div id="scenarioDescription" class="scenario-description" aria-live="polite"></div>
             </div>
 
             <div class="legend" id="multiLegend" style="display: none;">
